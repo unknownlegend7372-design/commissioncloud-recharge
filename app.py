@@ -4,7 +4,7 @@ import re
 import secrets
 import sqlite3
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, url_for
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -41,6 +41,11 @@ def extract_plan_amount_from_text(plan_text: str) -> float:
         except ValueError:
             return 0.0
     return 0.0
+
+
+@app.route("/")
+def index():
+    return redirect(url_for("recharge_bp.recharge_home"))
 
 
 # ऑपरेटर एपीआई
