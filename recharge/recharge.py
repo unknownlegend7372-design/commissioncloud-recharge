@@ -42,12 +42,57 @@ except ImportError:
             get_wallet_transactions,
         )
 
-from .gateways.registry import get_payment_gateway
-from .providers.a1topup import (
-    A1TopupProvider,
-    MOBILE_OPERATORS,
-    BILLER_LISTS_BY_TYPE,
-)
+try:
+    from .gateways.registry import get_payment_gateway
+except ImportError:
+    try:
+        from gateways.registry import get_payment_gateway
+    except ImportError:
+        class _FallbackGateway:
+            def build_payment_url(self, **kwargs):
+                return kwargs.get("callback_url") or "/recharge"
+
+            def verify_payment(self, **kwargs):
+                return {"verified": False, "utr": kwargs.get("fallback_utr", "")}
+
+        def get_payment_gateway():
+            return _FallbackGateway()
+
+try:
+    from .providers.a1topup import (
+        A1TopupProvider,
+        MOBILE_OPERATORS,
+        BILLER_LISTS_BY_TYPE,
+    )
+except ImportError:
+    try:
+        from providers.a1topup import (
+            A1TopupProvider,
+            MOBILE_OPERATORS,
+            BILLER_LISTS_BY_TYPE,
+        )
+    except ImportError:
+        MOBILE_OPERATORS = ["Jio", "Airtel", "Vi", "BSNL"]
+        BILLER_LISTS_BY_TYPE = {
+            "DTH": ["Tata Play", "Airtel Digital TV", "Dish TV", "Sun Direct", "d2h"],
+            "Electricity": [],
+            "Gas": [],
+            "FASTag": [],
+        }
+
+        class A1TopupProvider:
+            api_token = ""
+
+            def execute_recharge(self, local_order_id, operator, number, amount):
+                return {
+                    "final_status": "RECHARGE_PENDING",
+                    "txid": "",
+                    "opid": "",
+                    "raw_msg": "PROVIDER_MODULE_MISSING",
+                }
+
+            def check_status(self, order_id, fallback_txid=""):
+                return {"mapped_status": "PENDING", "opid": "", "txid": fallback_txid}
 
 logger = logging.getLogger("commissioncloud.recharge")
 recharge_bp = Blueprint("recharge_bp", __name__, template_folder="templates")
@@ -57,7 +102,18 @@ A1_CALLBACK_SECRET = os.getenv("A1_CALLBACK_SECRET", "").strip()
 SMS_GATEWAY_KEY = os.getenv("SMS_GATEWAY_KEY", "").strip()
 ALLOW_MANUAL_UTR_AUTO_RECHARGE = os.getenv("ALLOW_MANUAL_UTR_AUTO_RECHARGE", "0").strip() == "1"
 
-ORDERS_DB_PATH = os.getenv("ORDERS_DB_PATH", "").strip() or os.path.join(_CURRENT_DIR, "recharge_orders.db")
+
+def _resolve_orders_db_path() -> str:
+    env_path = os.getenv("ORDERS_DB_PATH", "").strip()
+    if env_path:
+        return env_path
+    default_path = os.path.join(_CURRENT_DIR, "recharge_orders.db")
+    if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK):
+        return "/tmp/recharge_orders.db"
+    return default_path
+
+
+ORDERS_DB_PATH = _resolve_orders_db_path()
 recharge_provider = A1TopupProvider()
 
 CASHBACK_RATES = {
