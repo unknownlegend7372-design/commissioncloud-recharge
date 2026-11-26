@@ -5,17 +5,43 @@ import os
 import re
 import secrets
 import sqlite3
+import sys
 import time
 from decimal import Decimal
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
 
-from wallet import (
-    q_money,
-    get_wallet_balance,
-    add_cashback_to_wallet,
-    deduct_wallet_for_recharge,
-    get_wallet_transactions,
-)
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+for _p in (_ROOT_DIR, _CURRENT_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    from wallet import (
+        q_money,
+        get_wallet_balance,
+        add_cashback_to_wallet,
+        deduct_wallet_for_recharge,
+        get_wallet_transactions,
+    )
+except ImportError:
+    try:
+        from ..wallet import (
+            q_money,
+            get_wallet_balance,
+            add_cashback_to_wallet,
+            deduct_wallet_for_recharge,
+            get_wallet_transactions,
+        )
+    except ImportError:
+        from .wallet import (
+            q_money,
+            get_wallet_balance,
+            add_cashback_to_wallet,
+            deduct_wallet_for_recharge,
+            get_wallet_transactions,
+        )
+
 from .gateways.registry import get_payment_gateway
 from .providers.a1topup import (
     A1TopupProvider,
@@ -28,9 +54,10 @@ recharge_bp = Blueprint("recharge_bp", __name__, template_folder="templates")
 
 ADMIN_ACCESS_KEY = os.getenv("ADMIN_ACCESS_KEY", "").strip()
 A1_CALLBACK_SECRET = os.getenv("A1_CALLBACK_SECRET", "").strip()
+SMS_GATEWAY_KEY = os.getenv("SMS_GATEWAY_KEY", "").strip()
 ALLOW_MANUAL_UTR_AUTO_RECHARGE = os.getenv("ALLOW_MANUAL_UTR_AUTO_RECHARGE", "0").strip() == "1"
 
-ORDERS_DB_PATH = os.path.join(os.path.dirname(__file__), "recharge_orders.db")
+ORDERS_DB_PATH = os.getenv("ORDERS_DB_PATH", "").strip() or os.path.join(_CURRENT_DIR, "recharge_orders.db")
 recharge_provider = A1TopupProvider()
 
 CASHBACK_RATES = {
@@ -63,6 +90,10 @@ DEBIT_KEYWORDS = (
 
 
 def get_db_conn(readonly: bool = False):
+    db_dir = os.path.dirname(os.path.abspath(ORDERS_DB_PATH))
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+
     if readonly and os.path.exists(ORDERS_DB_PATH):
         uri = f"file:{os.path.abspath(ORDERS_DB_PATH)}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=30.0, check_same_thread=False)
@@ -1198,46 +1229,3 @@ def a1topup_webhook_callback():
             (order_id, order_id),
         )
         order = c.fetchone()
-
-        if not order:
-            conn.commit()
-            return "Order Not Found", 200
-
-        actual_order_id = order["local_order_id"]
-        if order["status"] in ["RECHARGE_SUCCESS", "RECHARGE_FAILED", "REFUNDED"]:
-            conn.commit()
-            return "OK", 200
-
-        if cb_status == "success":
-            c.execute(
-                """UPDATE recharge_orders
-                   SET status = 'RECHARGE_SUCCESS', a1_opid = ?, api_response = ?, updated_at = CURRENT_TIMESTAMP
-                   WHERE local_order_id = ? AND status NOT IN ('RECHARGE_SUCCESS', 'RECHARGE_FAILED', 'REFUNDED')""",
-                (opid, f"CALLBACK_SUCCESS: {opid}", actual_order_id),
-            )
-            cb_amt = q_money(order["cashback_earned"])
-            if c.rowcount > 0 and cb_amt > Decimal("0.00"):
-                add_cashback_to_wallet(
-                    order["user_id"], float(cb_amt), actual_order_id, order["operator"], order["number"]
-                )
-        elif cb_status in ("failure", "failed", "error", "refund"):
-            c.execute(
-                """UPDATE recharge_orders
-                   SET status = 'RECHARGE_FAILED', a1_opid = ?, api_response = ?, updated_at = CURRENT_TIMESTAMP
-                   WHERE local_order_id = ? AND status NOT IN ('RECHARGE_SUCCESS', 'RECHARGE_FAILED', 'REFUNDED')""",
-                (opid, f"CALLBACK_FAILURE: {opid}", actual_order_id),
-            )
-            if c.rowcount > 0:
-                total_refund = q_money(q_money(order["wallet_used"]) + q_money(order["payable_amount"]))
-                if total_refund > Decimal("0.00"):
-                    add_cashback_to_wallet(
-                        order["user_id"], float(total_refund), actual_order_id, f"REFUND - {order['operator']}", order["number"]
-                    )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-    return "OK", 200
