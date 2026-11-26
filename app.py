@@ -4,13 +4,14 @@ import re
 import secrets
 import sqlite3
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, redirect, url_for, render_template_string
+from flask import Flask, request, jsonify, url_for, render_template_string
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-# recharge फोल्डर से ब्लूप्रिंट इम्पोर्ट करें
+# recharge और shopping मॉड्यूल से ब्लूप्रिंट इम्पोर्ट करें
 from recharge.recharge import recharge_bp
+from shopping_module import shopping_bp
 
 logger = logging.getLogger("recharge.app")
 
@@ -80,11 +81,6 @@ def extract_plan_amount_from_text(plan_text: str) -> float:
         except ValueError:
             return 0.0
     return 0.0
-
-
-@app.route("/")
-def index():
-    return redirect(url_for("recharge_bp.recharge_home"))
 
 
 @app.route("/privacy-policy")
@@ -231,6 +227,7 @@ def get_plans():
 
 
 app.register_blueprint(recharge_bp)
+app.register_blueprint(shopping_bp)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
