@@ -57,9 +57,38 @@
         .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #64748b; }
 
         .item-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
-        .item-row { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 8px; gap: 10px; }
-        .item-info { font-size: 12px; color: #334155; font-weight: 600; word-break: break-word; }
-        .item-sub { font-size: 10px; color: #64748b; font-weight: 500; }
+        .item-row { display: flex; align-items: flex-start; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 8px; gap: 10px; }
+        .item-info { font-size: 12px; color: #334155; font-weight: 600; word-break: break-word; line-height: 1.45; }
+        .item-sub { font-size: 10px; color: #64748b; font-weight: 500; margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+        .admin-more-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: #f3e8ff;
+            color: #6d28d9;
+            border: 1px solid #d8b4fe;
+            border-radius: 999px;
+            padding: 1px 7px;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .admin-more-btn:hover { background: #e9d5ff; }
+
+        .admin-benefits-box {
+            display: none;
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: #ffffff;
+            border-left: 3px solid #7c3aed;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #334155;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .admin-benefits-box.open { display: block; }
 
         .delete-btn { background: #fee2e2; color: #dc2626; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; cursor: pointer; flex-shrink: 0; }
         .delete-btn:hover { background: #dc2626; color: #fff; }
@@ -501,6 +530,71 @@
 <script>
     const CSRF_TOKEN = "{{ csrf_token }}";
 
+    function splitBenefitsAndMore(text) {
+        const hasMore = /\|\s*Common\s*Benefits\s*:\s*More\b|\bCommon\s*Benefits\s*:\s*More\b|\|\s*More\s*$/i.test(text);
+        const benMatch = text.match(/\|\s*Benefits\s*:\s*([\s\S]*?)(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i)
+            || text.match(/\bBenefits\s*:\s*([\s\S]*?)(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i);
+
+        let benefitsText = benMatch ? benMatch[1].trim() : '';
+        benefitsText = benefitsText
+            .replace(/\|\s*Common\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\bCommon\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\|\s*More\s*$/gi, '')
+            .trim()
+            .replace(/\|\s*$/, '')
+            .trim();
+
+        let mainText = text
+            .replace(/\|\s*Benefits\s*:\s*[\s\S]*?(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i, '')
+            .replace(/\bBenefits\s*:\s*[\s\S]*?(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i, '')
+            .replace(/\|\s*Common\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\bCommon\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\|\s*More\s*$/gi, '')
+            .trim()
+            .replace(/\|\s*$/, '')
+            .trim();
+
+        const showMore = Boolean(benefitsText || hasMore);
+        const finalBenefits = benefitsText || 'Additional operator & common benefits included with this plan.';
+        return { mainText, benefitsText: finalBenefits, showMore };
+    }
+
+    function enhanceAdminPlanRows() {
+        document.querySelectorAll('.item-row').forEach(row => {
+            const infoEl = row.querySelector('.item-info');
+            const subEl = row.querySelector('.item-sub');
+            const leftCol = infoEl ? infoEl.parentElement : null;
+            if (!infoEl || !subEl || !leftCol || leftCol.dataset.moreReady === '1') return;
+
+            const rawText = infoEl.textContent.trim();
+            const { mainText, benefitsText, showMore } = splitBenefitsAndMore(rawText);
+            infoEl.textContent = mainText || rawText;
+
+            if (showMore) {
+                const drawer = document.createElement('div');
+                drawer.className = 'admin-benefits-box';
+                drawer.textContent = `Benefits: ${benefitsText}`;
+
+                const moreBtn = document.createElement('button');
+                moreBtn.type = 'button';
+                moreBtn.className = 'admin-more-btn';
+                moreBtn.innerHTML = 'More <span class="more-arrow">▾</span>';
+                moreBtn.onclick = function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const isOpen = drawer.classList.toggle('open');
+                    const arrow = moreBtn.querySelector('.more-arrow');
+                    if (arrow) arrow.textContent = isOpen ? '▴' : '▾';
+                };
+
+                subEl.appendChild(moreBtn);
+                leftCol.appendChild(drawer);
+            }
+
+            leftCol.dataset.moreReady = '1';
+        });
+    }
+
     function switchService(servKey, element) {
         document.querySelectorAll('.serv-card').forEach(card => card.classList.remove('active'));
         const refundBtn = document.querySelector('.refund-toggle-btn');
@@ -617,6 +711,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        enhanceAdminPlanRows();
+
         const savedServ = localStorage.getItem('cc_admin_serv');
         const savedSub = localStorage.getItem('cc_admin_sub');
         const savedCat = localStorage.getItem('cc_admin_cat');
