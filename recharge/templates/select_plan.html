@@ -134,9 +134,10 @@
     const NON_MOBILE_OPERATORS = ['dth', 'electricity', 'gas', 'fastag'];
 
     function getOperator5gDomain(op) {
-        if (op.includes('airtel')) return 'airtel.in';
-        if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'myvi.in';
-        if (op.includes('bsnl')) return 'bsnl.co.in';
+        const val = (op || '').toLowerCase();
+        if (val.includes('airtel')) return 'airtel.in';
+        if (val.includes('vi') || val.includes('vodafone') || val.includes('idea')) return 'myvi.in';
+        if (val.includes('bsnl')) return 'bsnl.co.in';
         return 'jio.com';
     }
 
