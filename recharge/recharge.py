@@ -1229,3 +1229,46 @@ def a1topup_webhook_callback():
             (order_id, order_id),
         )
         order = c.fetchone()
+
+        if not order:
+            conn.commit()
+            return "Order Not Found", 200
+
+        actual_order_id = order["local_order_id"]
+        if order["status"] in ["RECHARGE_SUCCESS", "RECHARGE_FAILED", "REFUNDED"]:
+            conn.commit()
+            return "OK", 200
+
+        if cb_status == "success":
+            c.execute(
+                """UPDATE recharge_orders
+                   SET status = 'RECHARGE_SUCCESS', a1_opid = ?, api_response = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE local_order_id = ? AND status NOT IN ('RECHARGE_SUCCESS', 'RECHARGE_FAILED', 'REFUNDED')""",
+                (opid, f"CALLBACK_SUCCESS: {opid}", actual_order_id),
+            )
+            cb_amt = q_money(order["cashback_earned"])
+            if c.rowcount > 0 and cb_amt > Decimal("0.00"):
+                add_cashback_to_wallet(
+                    order["user_id"], float(cb_amt), actual_order_id, order["operator"], order["number"]
+                )
+        elif cb_status in ("failure", "failed", "error", "refund"):
+            c.execute(
+                """UPDATE recharge_orders
+                   SET status = 'RECHARGE_FAILED', a1_opid = ?, api_response = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE local_order_id = ? AND status NOT IN ('RECHARGE_SUCCESS', 'RECHARGE_FAILED', 'REFUNDED')""",
+                (opid, f"CALLBACK_FAILURE: {opid}", actual_order_id),
+            )
+            if c.rowcount > 0:
+                total_refund = q_money(q_money(order["wallet_used"]) + q_money(order["payable_amount"]))
+                if total_refund > Decimal("0.00"):
+                    add_cashback_to_wallet(
+                        order["user_id"], float(total_refund), actual_order_id, f"REFUND - {order['operator']}", order["number"]
+                    )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return "OK", 200
