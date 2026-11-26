@@ -103,7 +103,7 @@ def privacy_policy():
     <h2>4. Cookies &amp; Session Data</h2>
     <p>We use secure session cookies to maintain user sessions, wallet balances, and CSRF protection during transactions.</p>
     <h2>5. Contact for Privacy Queries</h2>
-    <p>For any questions regarding your data or privacy, reach us at <strong>support@commissioncloud.in</strong>.</p>
+    <p>For any questions regarding your data or privacy, reach us at <strong>amitkr5993@gmail.com</strong>.</p>
     """
     return render_template_string(LEGAL_PAGE_TEMPLATE, title="Privacy Policy", content=content)
 
@@ -154,7 +154,7 @@ def contact_us():
     <ul>
       <li><strong>Brand / Portal Name:</strong> Commission Cloud (Commission Cloud Recharge)</li>
       <li><strong>Website:</strong> https://commissioncloud.in</li>
-      <li><strong>Support Email:</strong> support@commissioncloud.in</li>
+      <li><strong>Support Email:</strong> amitkr5993@gmail.com</li>
       <li><strong>Operating Hours:</strong> Monday to Saturday, 10:00 AM – 7:00 PM IST</li>
       <li><strong>Location:</strong> Vaishali, Bihar, India</li>
     </ul>
