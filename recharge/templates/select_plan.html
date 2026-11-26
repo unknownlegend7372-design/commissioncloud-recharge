@@ -35,11 +35,40 @@
         .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; color: #64748b; }
 
         .plans-container { display: flex; flex-direction: column; gap: 12px; }
-        .plan-card { background: #ffffff; border-radius: 16px; padding: 16px; border: 1.5px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .plan-card { background: #ffffff; border-radius: 16px; padding: 16px; border: 1.5px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
         .plan-details-col { flex: 1; min-width: 0; }
-        .plan-info { font-size: 14px; font-weight: 700; color: #0f172a; word-wrap: break-word; }
-        .plan-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
-        .cb-pill { display: inline-block; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 6px; }
+        .plan-info { font-size: 14px; font-weight: 700; color: #0f172a; word-wrap: break-word; line-height: 1.45; }
+        .plan-sub { font-size: 12px; color: #64748b; margin-top: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        .cb-pill { display: inline-block; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+
+        .plan-more-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #f3e8ff;
+            color: #6d28d9;
+            border: 1px solid #d8b4fe;
+            border-radius: 999px;
+            padding: 2px 9px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .plan-more-btn:hover { background: #e9d5ff; }
+
+        .plan-benefits-box {
+            display: none;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #f8fafc;
+            border-left: 3px solid #7c3aed;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #334155;
+            line-height: 1.45;
+            word-wrap: break-word;
+        }
+        .plan-benefits-box.open { display: block; }
 
         .ott-icons-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .ott-chip { display: inline-flex; align-items: center; gap: 5px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 2px 8px 2px 3px; font-size: 11px; font-weight: 700; color: #1e293b; }
@@ -105,7 +134,10 @@
             <div class="plan-card" data-category="{{ p.category | trim | lower }}" data-search="{{ p.plan_text | lower }}" data-raw="{{ p.plan_text }}">
                 <div class="plan-details-col">
                     <div class="plan-info">{{ p.plan_text }}</div>
-                    <div class="plan-sub">{{ (p.category or 'PLAN') | upper }} Plan <span class="cb-pill"></span></div>
+                    <div class="plan-sub">
+                        <span>{{ (p.category or 'PLAN') | upper }} Plan</span>
+                        <span class="cb-pill"></span>
+                    </div>
                 </div>
                 <form action="/recharge/initiate" method="POST" onsubmit="return prepareRecharge(this)">
                     <input type="hidden" name="service_type" value="Mobile Prepaid">
@@ -174,9 +206,39 @@
         return '';
     }
 
+    function splitBenefitsAndMore(text) {
+        const hasMore = /\|\s*Common\s*Benefits\s*:\s*More\b|\bCommon\s*Benefits\s*:\s*More\b|\|\s*More\s*$/i.test(text);
+        const benMatch = text.match(/\|\s*Benefits\s*:\s*([\s\S]*?)(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i)
+            || text.match(/\bBenefits\s*:\s*([\s\S]*?)(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i);
+
+        let benefitsText = benMatch ? benMatch[1].trim() : '';
+        benefitsText = benefitsText
+            .replace(/\|\s*Common\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\bCommon\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\|\s*More\s*$/gi, '')
+            .trim()
+            .replace(/\|\s*$/, '')
+            .trim();
+
+        let mainText = text
+            .replace(/\|\s*Benefits\s*:\s*[\s\S]*?(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i, '')
+            .replace(/\bBenefits\s*:\s*[\s\S]*?(?=\|\s*Common\s*Benefits\s*:|\|\s*More\s*$|$)/i, '')
+            .replace(/\|\s*Common\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\bCommon\s*Benefits\s*:\s*More\b/gi, '')
+            .replace(/\|\s*More\s*$/gi, '')
+            .trim()
+            .replace(/\|\s*$/, '')
+            .trim();
+
+        const showMore = Boolean(benefitsText || hasMore);
+        const finalBenefits = benefitsText || 'Additional operator & common benefits included with this plan.';
+        return { mainText, benefitsText: finalBenefits, showMore };
+    }
+
     function renderPlanOttIcons() {
         document.querySelectorAll('.plan-card').forEach(card => {
             const infoEl = card.querySelector('.plan-info');
+            const subEl = card.querySelector('.plan-sub');
             const detailsCol = card.querySelector('.plan-details-col');
             if (!infoEl || !detailsCol) return;
 
@@ -184,9 +246,11 @@
                 .replace(/\[span_\d+\]\((?:start_span|end_span)\)\.?/g, '')
                 .replace(/\s{2,}/g, ' ')
                 .trim();
-            infoEl.textContent = cleanedText;
             card.setAttribute('data-raw', cleanedText);
             card.setAttribute('data-search', cleanedText.toLowerCase());
+
+            const { mainText, benefitsText, showMore } = splitBenefitsAndMore(cleanedText);
+            infoEl.textContent = mainText || cleanedText;
 
             const amtStr = extractPlanAmount(cleanedText);
             const pill = card.querySelector('.cb-pill');
@@ -195,6 +259,25 @@
                 pill.textContent = `+₹${cbVal} Cashback`;
             } else if (pill) {
                 pill.style.display = 'none';
+            }
+
+            if (showMore && subEl && !subEl.querySelector('.plan-more-btn')) {
+                const drawer = document.createElement('div');
+                drawer.className = 'plan-benefits-box';
+                drawer.textContent = `Benefits: ${benefitsText}`;
+
+                const moreBtn = document.createElement('button');
+                moreBtn.type = 'button';
+                moreBtn.className = 'plan-more-btn';
+                moreBtn.innerHTML = 'More <span class="more-arrow">▾</span>';
+                moreBtn.onclick = function () {
+                    const isOpen = drawer.classList.toggle('open');
+                    const arrow = moreBtn.querySelector('.more-arrow');
+                    if (arrow) arrow.textContent = isOpen ? '▴' : '▾';
+                };
+
+                subEl.appendChild(moreBtn);
+                detailsCol.appendChild(drawer);
             }
 
             const lowerText = cleanedText.toLowerCase();
