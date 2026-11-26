@@ -141,7 +141,7 @@ def refund_policy():
       <li><strong>Source / Bank Refund:</strong> Where applicable for verified failed gateway payments, refunds are processed within <strong>3 to 7 working days</strong> depending on bank/UPI settlement timelines.</li>
     </ul>
     <h2>4. Pending Orders &amp; Support</h2>
-    <p>Orders in <em>Pending</em> status are reconciled with operator status callbacks. If an order remains unresolved beyond 24 hours, please contact <strong>support@commissioncloud.in</strong> with your Order ID and UTR/Transaction ID.</p>
+    <p>Orders in <em>Pending</em> status are reconciled with operator status callbacks. If an order remains unresolved beyond 24 hours, please contact <strong>amitkr5993@gmail.com</strong> with your Order ID and UTR/Transaction ID.</p>
     """
     return render_template_string(LEGAL_PAGE_TEMPLATE, title="Refund & Cancellation Policy", content=content)
 
