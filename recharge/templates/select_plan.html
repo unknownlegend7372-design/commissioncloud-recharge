@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Select Plan - Commission Cloud</title>
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+- { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { margin: 0; background: #f8fafc; color: #0f172a; padding-bottom: 70px; }
 
         .top-bar { background: #7c3aed; color: #fff; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
@@ -133,6 +133,13 @@
     const cashbackRate = parseFloat(metaEl ? metaEl.getAttribute('data-cb-rate') : '0') || 0;
     const NON_MOBILE_OPERATORS = ['dth', 'electricity', 'gas', 'fastag'];
 
+    function getOperator5gDomain(op) {
+        if (op.includes('airtel')) return 'airtel.in';
+        if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'myvi.in';
+        if (op.includes('bsnl')) return 'bsnl.co.in';
+        return 'jio.com';
+    }
+
     const OTT_PROVIDERS = [
         { keys: ['hotstar', 'jiohotstar', 'disney'], name: 'Hotstar', domain: 'hotstar.com' },
         { keys: ['jiocinema', 'jio cinema'], name: 'JioCinema', domain: 'jiocinema.com' },
@@ -142,7 +149,7 @@
         { keys: ['prime', 'amazon'], name: 'Prime', domain: 'primevideo.com' },
         { keys: ['sony', 'sonyliv'], name: 'SonyLIV', domain: 'sonyliv.com' },
         { keys: ['zee5', 'zee 5'], name: 'ZEE5', domain: 'zee5.com' },
-        { keys: ['5g'], name: '5G', domain: 'jio.com' }
+        { keys: ['5g'], name: '5G', domain: getOperator5gDomain(currentOperator) }
     ];
 
     function syncWalletInputs() {
