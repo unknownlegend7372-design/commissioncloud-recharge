@@ -144,6 +144,46 @@ DEBIT_KEYWORDS = (
     "नामे", "निकासी", "निकाले", "खर्च",
 )
 
+# यहाँ अपने डिफ़ॉल्ट प्लान्स (operator, category, plan_text) रखें
+DEFAULT_PLANS = [
+    (
+        "Jio",
+        "5g",
+        "Rs 3599 | Validity: 1 Year | Data: 2.5 GB/Day | SMS: 100 SMS/Day | Rate: Rs 9.86/Day | Benefits: True 5G Unlimited + JioHotstar Mobile + Hollywood + JioTV Pro Pack + Rewards + Canva | Common Benefits: More",
+    ),
+    (
+        "Airtel",
+        "ent",
+        "Rs 3999 | Validity: 1 Year | Data: Unlimited 4G + 5G Data | Calls: Unlimited Local, STD & Roaming | SMS: 100/Day | Rate: Rs 10.96/Day | Benefits: Additional OTT Benefits | Common Benefits: More",
+    ),
+]
+
+
+def seed_default_plans(conn):
+    c = conn.cursor()
+    c.execute("SELECT operator, category, plan_text FROM operator_plans")
+    existing = {
+        (
+            str(r["operator"] or "").strip().lower(),
+            str(r["category"] or "").strip().lower(),
+            str(r["plan_text"] or "").strip(),
+        )
+        for r in c.fetchall()
+    }
+    for op, cat, ptext in DEFAULT_PLANS:
+        op_clean = str(op or "").strip().title()
+        cat_clean = str(cat or "").strip().lower()
+        txt_clean = str(ptext or "").strip()
+        if not op_clean or not txt_clean:
+            continue
+        key = (op_clean.lower(), cat_clean, txt_clean)
+        if key not in existing:
+            c.execute(
+                "INSERT INTO operator_plans (operator, category, plan_text) VALUES (?, ?, ?)",
+                (op_clean, cat_clean, txt_clean),
+            )
+            existing.add(key)
+
 
 def get_db_conn(readonly: bool = False):
     db_dir = os.path.dirname(os.path.abspath(ORDERS_DB_PATH))
@@ -476,6 +516,7 @@ def init_orders_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_orders_user_created ON recharge_orders (user_id, created_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_orders_status_amt ON recharge_orders (status, payable_amount)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_orders_utr ON recharge_orders (utr)")
+        seed_default_plans(conn)
         conn.commit()
     finally:
         conn.close()
