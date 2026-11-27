@@ -16,9 +16,10 @@
 
         .container { max-width: 480px; margin: 0 auto; padding: 16px; }
 
-        .info-card { background: #ffffff; border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .info-card { background: #ffffff; border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
         .info-left { font-size: 13px; color: #64748b; font-weight: 700; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
         .circle-tag { display: inline-block; background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+        .circle-select-mini { margin-top: 8px; padding: 5px 8px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; max-width: 220px; }
         .info-number { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px; }
         .change-btn { background: #f1f5f9; color: #7c3aed; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid #cbd5e1; flex-shrink: 0; }
 
@@ -108,6 +109,31 @@
                 </span>
             </div>
             <div class="info-number" id="displayNumberText">{{ mobile_number }}</div>
+            <select id="circleChangerSelect" class="circle-select-mini" aria-label="Change Circle" onchange="onCircleSelectChange(this.value)">
+                <option value="">-- Location / Circle बदलें --</option>
+                <option value="Bihar & Jharkhand">Bihar & Jharkhand</option>
+                <option value="UP East">UP East</option>
+                <option value="UP West">UP West</option>
+                <option value="Delhi NCR">Delhi NCR</option>
+                <option value="Mumbai">Mumbai</option>
+                <option value="Maharashtra & Goa">Maharashtra & Goa</option>
+                <option value="Gujarat">Gujarat</option>
+                <option value="Rajasthan">Rajasthan</option>
+                <option value="Madhya Pradesh & Chhattisgarh">Madhya Pradesh & Chhattisgarh</option>
+                <option value="West Bengal">West Bengal</option>
+                <option value="Kolkata">Kolkata</option>
+                <option value="Odisha">Odisha</option>
+                <option value="Assam">Assam</option>
+                <option value="North East">North East</option>
+                <option value="Punjab">Punjab</option>
+                <option value="Haryana">Haryana</option>
+                <option value="Himachal Pradesh">Himachal Pradesh</option>
+                <option value="Jammu & Kashmir">Jammu & Kashmir</option>
+                <option value="Andhra Pradesh & Telangana">Andhra Pradesh & Telangana</option>
+                <option value="Karnataka">Karnataka</option>
+                <option value="Tamil Nadu">Tamil Nadu</option>
+                <option value="Kerala">Kerala</option>
+            </select>
         </div>
         <a href="/recharge" class="change-btn">Change</a>
     </div>
@@ -170,6 +196,7 @@
     const STORAGE_KEY_NUMBER = "cc_saved_mobile_number";
     const STORAGE_KEY_OPERATOR = "cc_saved_operator";
     const STORAGE_KEY_CIRCLE = "cc_saved_circle";
+    const STORAGE_KEY_PERMANENT_NUMBERS = "cc_permanent_numbers";
 
     let currentCategory = '5g';
     const metaEl = document.getElementById('planPageMeta');
@@ -193,23 +220,41 @@
     function updateCircleBadge(circleName) {
         const tag = document.getElementById('displayCircleTag');
         const txt = document.getElementById('displayCircleText');
+        const sel = document.getElementById('circleChangerSelect');
         const clean = (circleName || '').trim();
         if (clean) {
             if (txt) txt.textContent = clean;
             if (tag) tag.style.display = 'inline-block';
+            if (sel) {
+                const matched = Array.from(sel.options).find(o => o.value.toLowerCase() === clean.toLowerCase());
+                sel.value = matched ? matched.value : '';
+            }
         } else {
+            if (txt) txt.textContent = '';
             if (tag) tag.style.display = 'none';
+            if (sel) sel.value = '';
         }
     }
 
     function persistCurrentSelection() {
         try {
             const cleanNum = (currentNumber || '').replace(/\D/g, '').slice(0, 10);
+            const opDisplay = currentOperator ? (currentOperator.charAt(0).toUpperCase() + currentOperator.slice(1)) : '';
             if (cleanNum.length === 10) {
                 localStorage.setItem(STORAGE_KEY_NUMBER, cleanNum);
+                const raw = localStorage.getItem(STORAGE_KEY_PERMANENT_NUMBERS);
+                const list = raw ? JSON.parse(raw) : [];
+                const prev = Array.isArray(list) ? list.find(i => i && i.number === cleanNum) : null;
+                const filtered = Array.isArray(list) ? list.filter(i => i && i.number !== cleanNum) : [];
+                filtered.unshift({
+                    number: cleanNum,
+                    operator: opDisplay || (prev && prev.operator) || 'Jio',
+                    circle: currentCircle || (prev && prev.circle) || '',
+                    savedAt: Date.now()
+                });
+                localStorage.setItem(STORAGE_KEY_PERMANENT_NUMBERS, JSON.stringify(filtered.slice(0, 50)));
             }
-            if (currentOperator) {
-                const opDisplay = currentOperator.charAt(0).toUpperCase() + currentOperator.slice(1);
+            if (opDisplay) {
                 localStorage.setItem(STORAGE_KEY_OPERATOR, opDisplay);
             }
             if (currentCircle) {
@@ -218,6 +263,14 @@
         } catch (e) {
             console.warn("localStorage persist error:", e);
         }
+    }
+
+    function onCircleSelectChange(val) {
+        const chosen = (val || '').trim();
+        if (!chosen) return;
+        currentCircle = chosen;
+        updateCircleBadge(currentCircle);
+        persistCurrentSelection();
     }
 
     async function hydrateNumberAndCircle() {
@@ -233,8 +286,20 @@
                 document.querySelectorAll('.plan-number-input').forEach(inp => inp.value = currentNumber);
             }
 
+            if (currentNumber) {
+                const raw = localStorage.getItem(STORAGE_KEY_PERMANENT_NUMBERS);
+                const list = raw ? JSON.parse(raw) : [];
+                const permRec = Array.isArray(list) ? list.find(i => i && i.number === currentNumber) : null;
+                if (!currentCircle && permRec && permRec.circle) {
+                    currentCircle = permRec.circle;
+                }
+            }
+
             if (!currentCircle && savedCircle) {
                 currentCircle = savedCircle;
+            }
+
+            if (currentCircle) {
                 updateCircleBadge(currentCircle);
             }
 
