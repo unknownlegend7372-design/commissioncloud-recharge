@@ -540,19 +540,35 @@ def get_current_user_id():
 @recharge_bp.route("/recharge", methods=["GET"])
 def recharge_home():
     user_id = get_current_user_id()
-    wallet_balance = get_wallet_balance(user_id)
-    wallet_txns = get_wallet_transactions(user_id)
+    try:
+        wallet_balance = float(q_money(get_wallet_balance(user_id)))
+    except Exception:
+        wallet_balance = 0.0
+
+    try:
+        wallet_txns = get_wallet_transactions(user_id) or []
+    except Exception:
+        wallet_txns = []
+
     selected_service = clean_input_value(request.args.get("service", "Mobile")) or "Mobile"
 
-    conn = get_db_conn(readonly=False)
+    history = []
     try:
-        c = conn.cursor()
-        c.execute("""SELECT * FROM recharge_orders 
-                     WHERE user_id = ? AND created_at >= datetime('now', '-180 days') 
-                     ORDER BY created_at DESC LIMIT 20""", (user_id,))
-        history = c.fetchall()
-    finally:
-        conn.close()
+        conn = get_db_conn(readonly=False)
+        try:
+            c = conn.cursor()
+            c.execute(
+                """SELECT * FROM recharge_orders
+                   WHERE user_id = ? AND created_at >= datetime('now', '-180 days')
+                   ORDER BY created_at DESC LIMIT 20""",
+                (user_id,),
+            )
+            history = c.fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to load recharge history on /recharge")
+        history = []
 
     return render_template(
         "recharge.html",
@@ -890,7 +906,10 @@ def select_plan_page():
 @recharge_bp.route("/recharge/initiate", methods=["POST"])
 def initiate_recharge():
     user_id = get_current_user_id()
-    wallet_balance = q_money(get_wallet_balance(user_id))
+    try:
+        wallet_balance = q_money(get_wallet_balance(user_id))
+    except Exception:
+        wallet_balance = Decimal("0.00")
 
     service_type = clean_input_value(request.form.get("service_type", "Mobile")) or "Mobile"
     operator = clean_input_value(request.form.get("operator", ""))
@@ -933,16 +952,38 @@ def initiate_recharge():
     if payable_amount <= Decimal("0.00"):
         return execute_recharge_and_cashback(local_order_id, "WALLET_DIRECT", "")
 
-    gateway = get_payment_gateway()
-    callback_url = url_for("recharge_bp.payment_callback", local_order_id=local_order_id, _external=True)
-    payment_url = gateway.build_payment_url(
-        local_order_id=local_order_id,
-        user_id=user_id,
-        amount=payable_amount,
-        number=number,
-        operator=operator,
-        callback_url=callback_url,
-    )
+    try:
+        gateway = get_payment_gateway()
+        callback_url = url_for("recharge_bp.payment_callback", local_order_id=local_order_id, _external=True)
+        payment_url = gateway.build_payment_url(
+            local_order_id=local_order_id,
+            user_id=user_id,
+            amount=payable_amount,
+            number=number,
+            operator=operator,
+            callback_url=callback_url,
+        )
+    except Exception:
+        logger.exception("Payment gateway URL generation failed")
+        return (
+            f"<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
+            f"<h3 style='color:#dc2626;margin-top:0;'>पेमेंट लिंक नहीं बन सका</h3>"
+            f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b> | राशि: <b>₹{payable_amount:.2f}</b></p>"
+            f"<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+            f"</div>",
+            502,
+        )
+
+    if not payment_url:
+        return (
+            f"<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
+            f"<h3 style='color:#dc2626;margin-top:0;'>पेमेंट गेटवे URL उपलब्ध नहीं है</h3>"
+            f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b> | राशि: <b>₹{payable_amount:.2f}</b></p>"
+            f"<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+            f"</div>",
+            502,
+        )
+
     return redirect(payment_url)
 
 
@@ -953,7 +994,14 @@ def payment_callback():
     utr = clean_input_value(request.args.get("utr", "")).upper()
 
     if not local_order_id or not gateway_order_id:
-        return "Invalid Payment Callback", 400
+        return (
+            "<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
+            "<h3 style='color:#dc2626;margin-top:0;'>पेमेंट कॉलबैक पूरा नहीं हुआ</h3>"
+            "<p style='color:#334155;'>पेमेंट गेटवे से पूरा रेफ़रेंस डेटा नहीं मिला। यदि आपने पेमेंट कर दिया है, तो कृपया History या UTR से जाँच करें।</p>"
+            "<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+            "</div>",
+            200,
+        )
 
     conn = get_db_conn(readonly=False)
     try:
