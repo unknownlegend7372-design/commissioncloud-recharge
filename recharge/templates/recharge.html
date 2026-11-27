@@ -105,22 +105,6 @@
         }
     }
 
-    function resetFormForNextNumber() {
-        const inputEl = document.getElementById('numberInput');
-        if (inputEl) {
-            inputEl.value = "";
-            inputEl.focus();
-        }
-        clearOperatorSelection();
-        try {
-            localStorage.removeItem(STORAGE_KEY_NUMBER);
-            localStorage.removeItem(STORAGE_KEY_OPERATOR);
-            localStorage.removeItem(STORAGE_KEY_CIRCLE);
-        } catch (e) {
-            console.warn("Clear active number failed:", e);
-        }
-    }
-
     function toggleBsnlBox(opValue) {
         const box = document.getElementById('bsnlTypeBox');
         if (!box) return;
@@ -344,4 +328,9 @@
         if (circle) params.set("circle", circle);
         window.location.href = `/recharge/plans?${params.toString()}`;
     }
+
+    window.addEventListener('pageshow', function () {
+        const submitBtn = document.querySelector('#rechargeForm button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = false;
+    });
 </script>
