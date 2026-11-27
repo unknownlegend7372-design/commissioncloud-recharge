@@ -94,6 +94,15 @@ except ImportError:
             def check_status(self, order_id, fallback_txid=""):
                 return {"mapped_status": "PENDING", "opid": "", "txid": fallback_txid}
 
+try:
+    from .series_detector import detect_operator_by_number
+except ImportError:
+    try:
+        from series_detector import detect_operator_by_number
+    except ImportError:
+        def detect_operator_by_number(mobile_number: str):
+            return {"found": False, "operator": "", "circle": "", "series": ""}
+
 logger = logging.getLogger("commissioncloud.recharge")
 recharge_bp = Blueprint("recharge_bp", __name__, template_folder="templates")
 
@@ -559,6 +568,12 @@ def recharge_home():
         selected_service=selected_service,
         history=history,
     )
+
+
+@recharge_bp.route("/recharge/detect-operator", methods=["GET"])
+def api_detect_operator():
+    mobile = request.args.get("number", "")
+    return jsonify(detect_operator_by_number(mobile))
 
 
 @recharge_bp.route("/recharge/history", methods=["GET"])
