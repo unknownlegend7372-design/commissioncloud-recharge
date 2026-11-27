@@ -938,13 +938,22 @@ def initiate_recharge():
     try:
         expire_stale_pending_orders(conn)
         c = conn.cursor()
-        c.execute("""INSERT INTO recharge_orders 
-                     (local_order_id, user_id, service_type, operator, number, recharge_amount, wallet_used, payable_amount, cashback_earned, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PAYMENT')""",
-                  (
-                      local_order_id, user_id, service_type, operator, number,
-                      float(recharge_amount), float(wallet_used), float(payable_amount), float(cashback_earned),
-                  ))
+        c.execute(
+            """INSERT INTO recharge_orders
+               (local_order_id, user_id, service_type, operator, number, recharge_amount, wallet_used, payable_amount, cashback_earned, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_PAYMENT')""",
+            (
+                local_order_id,
+                user_id,
+                service_type,
+                operator,
+                number,
+                float(recharge_amount),
+                float(wallet_used),
+                float(payable_amount),
+                float(cashback_earned),
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -989,15 +998,19 @@ def initiate_recharge():
 
 @recharge_bp.route("/recharge/callback", methods=["GET"])
 def payment_callback():
-    local_order_id = clean_input_value(request.args.get("local_order_id", ""))
-    gateway_order_id = clean_input_value(request.args.get("order_id", ""))
+    local_order_id = clean_input_value(request.args.get("local_order_id", "") or request.args.get("order_id", ""))
+    gateway_order_id = clean_input_value(
+        request.args.get("gateway_order_id", "")
+        or request.args.get("txnid", "")
+        or (request.args.get("order_id", "") if request.args.get("local_order_id") else "")
+    )
     utr = clean_input_value(request.args.get("utr", "")).upper()
 
-    if not local_order_id or not gateway_order_id:
+    if not local_order_id:
         return (
             "<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
             "<h3 style='color:#dc2626;margin-top:0;'>पेमेंट कॉलबैक पूरा नहीं हुआ</h3>"
-            "<p style='color:#334155;'>पेमेंट गेटवे से पूरा रेफ़रेंस डेटा नहीं मिला। यदि आपने पेमेंट कर दिया है, तो कृपया History या UTR से जाँच करें।</p>"
+            "<p style='color:#334155;'>पेमेंट गेटवे से ऑर्डर जानकारी नहीं मिली। कृपया रिचार्ज पेज पर वापस जाएँ या History चेक करें।</p>"
             "<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
             "</div>",
             200,
@@ -1009,7 +1022,14 @@ def payment_callback():
         c.execute("SELECT * FROM recharge_orders WHERE local_order_id = ?", (local_order_id,))
         order = c.fetchone()
         if not order:
-            return "Order Not Found", 404
+            return (
+                "<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
+                "<h3 style='color:#dc2626;margin-top:0;'>ऑर्डर नहीं मिला</h3>"
+                f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b></p>"
+                "<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+                "</div>",
+                200,
+            )
 
         if order["status"] in TERMINAL_OR_INFLIGHT_STATUSES:
             return redirect(url_for("recharge_bp.recharge_home"))
@@ -1017,10 +1037,26 @@ def payment_callback():
         if utr and is_utr_already_used(conn, utr, exclude_order_id=local_order_id):
             return "यह UTR नंबर पहले ही उपयोग हो चुका है।", 409
 
-        if is_gateway_order_already_used(conn, gateway_order_id, exclude_order_id=local_order_id):
+        if gateway_order_id and is_gateway_order_already_used(conn, gateway_order_id, exclude_order_id=local_order_id):
             return "यह Gateway Order ID पहले ही किसी अन्य ऑर्डर में उपयोग हो चुका है।", 409
     finally:
         conn.close()
+
+    if not gateway_order_id:
+        return (
+            "<div style='font-family:sans-serif;padding:24px;max-width:440px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
+            "<h3 style='color:#7c3aed;margin-top:0;'>पेमेंट स्थिति की प्रतीक्षा</h3>"
+            f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b><br>नंबर: <b>{order['number']}</b> ({order['operator']})<br>राशि: <b>₹{float(order['payable_amount'] or 0):.2f}</b></p>"
+            "<form action='/recharge/submit-utr' method='POST' style='margin-top:14px;'>"
+            f"<input type='hidden' name='local_order_id' value='{local_order_id}'>"
+            "<label style='display:block;font-size:12px;font-weight:bold;margin-bottom:6px;'>UPI UTR / Ref No दर्ज करें (यदि पेमेंट कर दिया है):</label>"
+            "<input type='text' name='utr' placeholder='12-digit UTR number' style='width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:10px;box-sizing:border-box;'>"
+            "<button type='submit' style='width:100%;padding:10px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-weight:bold;cursor:pointer;'>UTR सबमिट करें</button>"
+            "</form>"
+            "<a href='/recharge' style='display:inline-block;margin-top:12px;color:#5b21b6;text-decoration:none;font-weight:bold;font-size:13px;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+            "</div>",
+            200,
+        )
 
     gateway = get_payment_gateway()
     expected_pay = q_money(order["payable_amount"])
