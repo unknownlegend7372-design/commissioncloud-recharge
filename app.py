@@ -4,12 +4,11 @@ import re
 import secrets
 import sqlite3
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, url_for, render_template_string
+from flask import Flask, render_template_string, jsonify, request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-# recharge और shopping मॉड्यूल से ब्लूप्रिंट इम्पोर्ट करें
 from recharge.recharge import recharge_bp
 from shopping_module import shopping_bp
 
@@ -18,7 +17,18 @@ logger = logging.getLogger("recharge.app")
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 
-ORDERS_DB_PATH = os.path.join(BASE_DIR, "recharge", "recharge_orders.db")
+
+def _resolve_orders_db_path() -> str:
+    env_path = os.getenv("ORDERS_DB_PATH", "").strip()
+    if env_path:
+        return env_path
+    default_path = os.path.join(BASE_DIR, "recharge", "recharge_orders.db")
+    if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK):
+        return "/tmp/recharge_orders.db"
+    return default_path
+
+
+ORDERS_DB_PATH = _resolve_orders_db_path()
 
 LEGAL_PAGE_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -27,6 +37,7 @@ LEGAL_PAGE_TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ title }} - Commission Cloud</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: #f4f6f9; color: #1f2937; margin: 0; padding: 0; line-height: 1.65; }
     header { background: #0f172a; color: #fff; padding: 16px 20px; text-align: center; }
     header a { color: #fff; text-decoration: none; font-size: 20px; font-weight: bold; }
@@ -158,7 +169,6 @@ def contact_us():
     return render_template_string(LEGAL_PAGE_TEMPLATE, title="Contact Us", content=content)
 
 
-# ऑपरेटर एपीआई
 @app.route('/get-operators')
 def get_operators():
     service_type = (request.args.get('service_type') or 'Mobile Prepaid').strip()
