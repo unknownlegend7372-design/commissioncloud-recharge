@@ -162,6 +162,23 @@ DEBIT_KEYWORDS = (
 )
 
 
+def _render_status_card(title: str, message: str, order_id: str = "", accent: str = "#dc2626", status_code: int = 200):
+    order_html = f"<p style='color:#334155;margin:6px 0;'>Order ID: <b>{order_id}</b></p>" if order_id else ""
+    html = (
+        "<div style='font-family:sans-serif;padding:24px;max-width:440px;margin:40px auto;"
+        "background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;"
+        "box-shadow:0 4px 14px rgba(0,0,0,0.06);'>"
+        f"<h3 style='color:{accent};margin-top:0;margin-bottom:8px;'>{title}</h3>"
+        f"{order_html}"
+        f"<p style='color:#1e293b;line-height:1.5;margin:8px 0 14px 0;'>{message}</p>"
+        "<a href='/recharge' style='display:inline-block;padding:10px 16px;"
+        "background:#7c3aed;color:#ffffff;text-decoration:none;border-radius:8px;"
+        "font-weight:bold;font-size:14px;'>← वापस रिचार्ज पेज पर जाएँ</a>"
+        "</div>"
+    )
+    return html, status_code
+
+
 def seed_default_plans(conn):
     c = conn.cursor()
     c.execute("SELECT operator, category, plan_text FROM operator_plans")
@@ -918,11 +935,11 @@ def initiate_recharge():
 
     is_valid, err_msg = validate_service_and_number(service_type, operator, number)
     if not is_valid:
-        return err_msg, 400
+        return _render_status_card("अमान्य विवरण", err_msg, accent="#dc2626", status_code=400)
 
     recharge_amount = q_money(request.form.get("amount", 0))
     if recharge_amount <= Decimal("0.00") or recharge_amount > Decimal("500000.00"):
-        return "कृपया सही रिचार्ज/बिल राशि दर्ज करें।", 400
+        return _render_status_card("अमान्य राशि", "कृपया सही रिचार्ज/बिल राशि दर्ज करें।", accent="#dc2626", status_code=400)
 
     rate_dec = Decimal(str(get_cashback_rate(operator, service_type)))
     cashback_earned = q_money((recharge_amount * rate_dec) / Decimal("100"))
@@ -974,23 +991,21 @@ def initiate_recharge():
         )
     except Exception:
         logger.exception("Payment gateway URL generation failed")
-        return (
-            f"<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
-            f"<h3 style='color:#dc2626;margin-top:0;'>पेमेंट लिंक नहीं बन सका</h3>"
-            f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b> | राशि: <b>₹{payable_amount:.2f}</b></p>"
-            f"<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
-            f"</div>",
-            502,
+        return _render_status_card(
+            "पेमेंट लिंक नहीं बन सका",
+            f"राशि: <b>₹{payable_amount:.2f}</b>",
+            order_id=local_order_id,
+            accent="#dc2626",
+            status_code=502,
         )
 
     if not payment_url:
-        return (
-            f"<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
-            f"<h3 style='color:#dc2626;margin-top:0;'>पेमेंट गेटवे URL उपलब्ध नहीं है</h3>"
-            f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b> | राशि: <b>₹{payable_amount:.2f}</b></p>"
-            f"<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
-            f"</div>",
-            502,
+        return _render_status_card(
+            "पेमेंट गेटवे URL उपलब्ध नहीं है",
+            f"राशि: <b>₹{payable_amount:.2f}</b>",
+            order_id=local_order_id,
+            accent="#dc2626",
+            status_code=502,
         )
 
     return redirect(payment_url)
@@ -1007,13 +1022,11 @@ def payment_callback():
     utr = clean_input_value(request.args.get("utr", "")).upper()
 
     if not local_order_id:
-        return (
-            "<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
-            "<h3 style='color:#dc2626;margin-top:0;'>पेमेंट कॉलबैक पूरा नहीं हुआ</h3>"
-            "<p style='color:#334155;'>पेमेंट गेटवे से ऑर्डर जानकारी नहीं मिली। कृपया रिचार्ज पेज पर वापस जाएँ या History चेक करें।</p>"
-            "<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
-            "</div>",
-            200,
+        return _render_status_card(
+            "पेमेंट कॉलबैक पूरा नहीं हुआ",
+            "पेमेंट गेटवे से ऑर्डर जानकारी नहीं मिली। कृपया रिचार्ज पेज पर वापस जाएँ या History चेक करें।",
+            accent="#dc2626",
+            status_code=200,
         )
 
     conn = get_db_conn(readonly=False)
@@ -1022,23 +1035,34 @@ def payment_callback():
         c.execute("SELECT * FROM recharge_orders WHERE local_order_id = ?", (local_order_id,))
         order = c.fetchone()
         if not order:
-            return (
-                "<div style='font-family:sans-serif;padding:24px;max-width:420px;margin:40px auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;'>"
-                "<h3 style='color:#dc2626;margin-top:0;'>ऑर्डर नहीं मिला</h3>"
-                f"<p style='color:#334155;'>Order ID: <b>{local_order_id}</b></p>"
-                "<a href='/recharge' style='display:inline-block;margin-top:10px;padding:10px 16px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;'>← वापस रिचार्ज पेज पर जाएँ</a>"
-                "</div>",
-                200,
+            return _render_status_card(
+                "ऑर्डर नहीं मिला",
+                "यह Order ID सिस्टम में नहीं मिला।",
+                order_id=local_order_id,
+                accent="#dc2626",
+                status_code=200,
             )
 
         if order["status"] in TERMINAL_OR_INFLIGHT_STATUSES:
             return redirect(url_for("recharge_bp.recharge_home"))
 
         if utr and is_utr_already_used(conn, utr, exclude_order_id=local_order_id):
-            return "यह UTR नंबर पहले ही उपयोग हो चुका है।", 409
+            return _render_status_card(
+                "डुप्लिकेट UTR",
+                "यह UTR नंबर पहले ही उपयोग हो चुका है।",
+                order_id=local_order_id,
+                accent="#dc2626",
+                status_code=409,
+            )
 
         if gateway_order_id and is_gateway_order_already_used(conn, gateway_order_id, exclude_order_id=local_order_id):
-            return "यह Gateway Order ID पहले ही किसी अन्य ऑर्डर में उपयोग हो चुका है।", 409
+            return _render_status_card(
+                "डुप्लिकेट Gateway Order ID",
+                "यह Gateway Order ID पहले ही किसी अन्य ऑर्डर में उपयोग हो चुका है।",
+                order_id=local_order_id,
+                accent="#dc2626",
+                status_code=409,
+            )
     finally:
         conn.close()
 
@@ -1070,10 +1094,22 @@ def payment_callback():
         )
     except Exception:
         logger.exception("Payment gateway verification failed")
-        return "पेमेंट गेटवे से सत्यापन नहीं हो सका, कृपया कुछ देर बाद पुनः प्रयास करें।", 502
+        return _render_status_card(
+            "सत्यापन में त्रुटि",
+            "पेमेंट गेटवे से सत्यापन नहीं हो सका, कृपया कुछ देर बाद पुनः प्रयास करें।",
+            order_id=local_order_id,
+            accent="#dc2626",
+            status_code=502,
+        )
 
     if not verified_info.get("verified"):
-        return "Payment not verified yet. Please complete payment first.", 400
+        return _render_status_card(
+            "पेमेंट सत्यापित नहीं हुआ",
+            "Payment not verified yet. Please complete payment first.",
+            order_id=local_order_id,
+            accent="#d97706",
+            status_code=400,
+        )
 
     final_utr = verified_info.get("utr") or utr
     return execute_recharge_and_cashback(local_order_id, gateway_order_id, final_utr)
@@ -1085,7 +1121,13 @@ def submit_utr():
     utr = clean_input_value(request.form.get("utr", "")).upper()
 
     if not local_order_id or not re.fullmatch(r"[A-Z0-9]{10,25}", utr):
-        return "कृपया सही Order ID और वैध UPI UTR नंबर दर्ज करें।", 400
+        return _render_status_card(
+            "अमान्य UTR / Order ID",
+            "कृपया सही Order ID और कम से कम 10 अक्षरों का वैध UPI UTR नंबर दर्ज करें।",
+            order_id=local_order_id,
+            accent="#dc2626",
+            status_code=400,
+        )
 
     conn = get_db_conn(readonly=False)
     try:
@@ -1093,12 +1135,30 @@ def submit_utr():
         c.execute("SELECT status, api_response FROM recharge_orders WHERE local_order_id = ?", (local_order_id,))
         row = c.fetchone()
         if not row:
-            return "Order ID नहीं मिला।", 404
+            return _render_status_card(
+                "ऑर्डर नहीं मिला",
+                "यह Order ID सिस्टम में नहीं मिला।",
+                order_id=local_order_id,
+                accent="#dc2626",
+                status_code=404,
+            )
         if row["status"] not in ("PENDING_PAYMENT", "NEEDS_REVIEW"):
-            return f"इस ऑर्डर का स्टेटस {row['status']} है, मैन्युअल UTR स्वीकार नहीं है।", 400
+            return _render_status_card(
+                "UTR स्वीकार नहीं है",
+                f"इस ऑर्डर का स्टेटस {row['status']} है, इसलिए अब मैन्युअल UTR सबमिट नहीं हो सकता।",
+                order_id=local_order_id,
+                accent="#d97706",
+                status_code=400,
+            )
 
         if is_utr_already_used(conn, utr, exclude_order_id=local_order_id):
-            return "यह UTR नंबर पहले ही किसी अन्य रिचार्ज में उपयोग किया जा चुका है!", 409
+            return _render_status_card(
+                "डुप्लिकेट UTR",
+                "यह UTR नंबर पहले ही किसी अन्य रिचार्ज में उपयोग किया जा चुका है!",
+                order_id=local_order_id,
+                accent="#dc2626",
+                status_code=409,
+            )
 
         if not ALLOW_MANUAL_UTR_AUTO_RECHARGE:
             c.execute(
@@ -1108,7 +1168,13 @@ def submit_utr():
                 (utr, f"MANUAL_UTR_SUBMITTED_FOR_REVIEW:{utr}", local_order_id),
             )
             conn.commit()
-            return "आपका UTR नंबर सफलतापूर्वक दर्ज हो गया है और वेरिफ़िकेशन के लिए भेज दिया गया है।", 200
+            return _render_status_card(
+                "UTR वेरिफ़िकेशन के लिए भेजा गया",
+                f"आपका UTR (<b>{utr}</b>) सफलतापूर्वक दर्ज हो गया है और वेरिफ़िकेशन के लिए भेज दिया गया है।",
+                order_id=local_order_id,
+                accent="#16a34a",
+                status_code=200,
+            )
     finally:
         conn.close()
 
