@@ -85,20 +85,21 @@
 
     function saveNumberAndOperator(number, operator, circle) {
         try {
-            if (!number) {
+            const cleanNum = (number || '').replace(/\D/g, '').slice(0, 10);
+            if (!cleanNum) {
                 localStorage.removeItem(STORAGE_KEY_NUMBER);
                 localStorage.removeItem(STORAGE_KEY_OPERATOR);
                 localStorage.removeItem(STORAGE_KEY_CIRCLE);
                 return;
             }
-            localStorage.setItem(STORAGE_KEY_NUMBER, number);
+            localStorage.setItem(STORAGE_KEY_NUMBER, cleanNum);
             if (operator) {
                 localStorage.setItem(STORAGE_KEY_OPERATOR, operator);
             }
             if (circle) {
                 localStorage.setItem(STORAGE_KEY_CIRCLE, circle);
             }
-            savePermanentNumberRecord(number, operator, circle);
+            savePermanentNumberRecord(cleanNum, operator, circle);
         } catch (e) {
             console.warn("localStorage save failed:", e);
         }
@@ -108,6 +109,7 @@
         const inputEl = document.getElementById('numberInput');
         if (inputEl) {
             inputEl.value = "";
+            inputEl.focus();
         }
         clearOperatorSelection();
         try {
@@ -127,8 +129,8 @@
             box.style.display = 'flex';
             const btnC = document.getElementById('btnBsnlCombo');
             const btnT = document.getElementById('btnBsnlTopup');
-            btnC.classList.toggle('active-bsnl', !lower.includes('topup'));
-            btnT.classList.toggle('active-bsnl', lower.includes('topup'));
+            if (btnC) btnC.classList.toggle('active-bsnl', !lower.includes('topup'));
+            if (btnT) btnT.classList.toggle('active-bsnl', lower.includes('topup'));
         } else {
             box.style.display = 'none';
         }
@@ -138,12 +140,14 @@
         document.querySelectorAll('.bsnl-type-btn').forEach(b => b.classList.remove('active-bsnl'));
         if (btn) btn.classList.add('active-bsnl');
         const selectBox = document.getElementById('operatorSelect');
-        selectBox.value = bsnlOp;
+        if (selectBox) selectBox.value = bsnlOp;
         isOperatorLocked = true;
         highlightOperatorChip('BSNL');
         const numVal = (document.getElementById('numberInput')?.value || '').trim();
         const circVal = (document.getElementById('circleInput')?.value || '').trim();
-        saveNumberAndOperator(numVal, bsnlOp, circVal);
+        if (numVal) {
+            saveNumberAndOperator(numVal, bsnlOp, circVal);
+        }
     }
 
     function highlightOperatorChip(opValue) {
@@ -172,26 +176,29 @@
         setOperatorValue(opName, true);
         const numVal = (document.getElementById('numberInput')?.value || '').trim();
         const circVal = (document.getElementById('circleInput')?.value || '').trim();
-        saveNumberAndOperator(numVal, document.getElementById('operatorSelect').value, circVal);
+        const opVal = document.getElementById('operatorSelect')?.value || opName;
+        if (numVal) {
+            saveNumberAndOperator(numVal, opVal, circVal);
+        }
     }
 
-    document.getElementById('operatorSelect').addEventListener('change', function() {
-        if (this.value !== "") {
-            isOperatorLocked = true;
-        } else {
-            isOperatorLocked = false;
-        }
-        highlightOperatorChip(this.value);
-        const numVal = (document.getElementById('numberInput')?.value || '').trim();
-        const circVal = (document.getElementById('circleInput')?.value || '').trim();
-        if (numVal) {
-            saveNumberAndOperator(numVal, this.value, circVal);
-        }
-    });
+    const opSelectEl = document.getElementById('operatorSelect');
+    if (opSelectEl) {
+        opSelectEl.addEventListener('change', function () {
+            isOperatorLocked = this.value !== "";
+            highlightOperatorChip(this.value);
+            const numVal = (document.getElementById('numberInput')?.value || '').trim();
+            const circVal = (document.getElementById('circleInput')?.value || '').trim();
+            if (numVal) {
+                saveNumberAndOperator(numVal, this.value, circVal);
+            }
+        });
+    }
 
     function selectService(serviceName, element) {
         if (serviceName.includes('Mobile')) {
-            document.getElementById('serviceTypeInput').value = serviceName;
+            const svcEl = document.getElementById('serviceTypeInput');
+            if (svcEl) svcEl.value = serviceName;
             document.querySelectorAll('.service-item').forEach(el => el.classList.remove('active'));
             if (element) element.classList.add('active');
         } else {
@@ -201,12 +208,13 @@
 
     function toggleMoreServices(element) {
         const moreBox = document.getElementById('moreServicesContainer');
-        if (moreBox.style.display === 'none') {
+        if (!moreBox) return;
+        if (moreBox.style.display === 'none' || !moreBox.style.display) {
             moreBox.style.display = 'grid';
-            element.classList.add('active');
+            if (element) element.classList.add('active');
         } else {
             moreBox.style.display = 'none';
-            element.classList.remove('active');
+            if (element) element.classList.remove('active');
         }
     }
 
@@ -275,7 +283,7 @@
         else if (['98', '99', '97', '96', '95', '91', '90', '76', '77', '78', '79'].includes(firstTwo)) fallbackOp = "Airtel";
         else if (['86', '85', '73', '74'].includes(firstTwo)) fallbackOp = "Vi";
 
-        if (fallbackOp && !isOperatorLocked && !hasSavedRecord) {
+        if (fallbackOp && !isOperatorLocked && !hasSavedRecord && selectBox) {
             selectBox.value = fallbackOp;
             highlightOperatorChip(fallbackOp);
         }
@@ -289,14 +297,14 @@
             if (reqId !== lastSeriesRequestId) return;
 
             if (data && data.found) {
-                if (data.circle) {
+                const savedRec = findSavedNumberRecord(number);
+                if (data.circle && !(savedRec && savedRec.circle)) {
                     setCircleDisplay(data.circle);
                 }
                 if (data.operator && !isOperatorLocked && !hasSavedRecord) {
                     setOperatorValue(data.operator, false);
                 }
                 if (number.length === 10) {
-                    const savedRec = findSavedNumberRecord(number);
                     const finalOp = (savedRec && savedRec.operator) || (document.getElementById('operatorSelect')?.value) || data.operator || 'Jio';
                     const finalCircle = (savedRec && savedRec.circle) || data.circle || '';
                     savePermanentNumberRecord(number, finalOp, finalCircle);
@@ -309,23 +317,22 @@
 
     function handleFormSubmit(event) {
         event.preventDefault();
-        const number = document.getElementById('numberInput').value.trim();
-        const operator = document.getElementById('operatorSelect').value.trim();
-        const circle = document.getElementById('circleInput').value.trim();
+        const number = (document.getElementById('numberInput')?.value || '').trim();
+        const operator = (document.getElementById('operatorSelect')?.value || '').trim();
+        const circle = (document.getElementById('circleInput')?.value || '').trim();
 
         if (!/^[6-9][0-9]{9}$/.test(number)) {
             alert("कृपया 6–9 से शुरू होने वाला सही 10 अंकों का मोबाइल नंबर दर्ज करें।");
-            document.getElementById('numberInput').focus();
+            document.getElementById('numberInput')?.focus();
             return;
         }
         if (!operator) {
             alert("कृपया ऑपरेटर चुनें।");
-            document.getElementById('operatorSelect').focus();
+            document.getElementById('operatorSelect')?.focus();
             return;
         }
 
-        savePermanentNumberRecord(number, operator, circle);
-        resetFormForNextNumber();
+        saveNumberAndOperator(number, operator, circle);
         goToPlanPage(number, operator, circle);
     }
 
@@ -337,8 +344,4 @@
         if (circle) params.set("circle", circle);
         window.location.href = `/recharge/plans?${params.toString()}`;
     }
-
-    window.addEventListener("DOMContentLoaded", function () {
-        resetFormForNextNumber();
-    });
 </script>
