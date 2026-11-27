@@ -110,7 +110,6 @@ SHOP_PAGE_HTML = """<!DOCTYPE html>
     body { margin: 0; background: #f1f5f9; color: #0f172a; }
     .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 40px; }
 
-    /* ऊपर बीच में बड़ा गोल आइकन */
     .top-recharge {
       display: flex;
       flex-direction: column;
@@ -142,7 +141,6 @@ SHOP_PAGE_HTML = """<!DOCTYPE html>
       color: #3b0764;
     }
 
-    /* नीचे सिर्फ़ शॉपिंग लिस्ट */
     .store-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
     .store-item {
       background: #ffffff;
@@ -170,7 +168,7 @@ SHOP_PAGE_HTML = """<!DOCTYPE html>
     <div class="store-list">
       {% for s in stores %}
       <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" class="store-item">
-        <img src="{{ s.logo }}" alt="{{ s.name }}">
+        <img src="{{ s.logo }}" alt="{{ s.name }}" onerror="this.style.display='none';">
         <div class="store-name">{{ s.name }}</div>
       </a>
       {% endfor %}
