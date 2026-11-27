@@ -16,10 +16,11 @@
 
         .container { max-width: 480px; margin: 0 auto; padding: 16px; }
 
-        .info-card { background: #ffffff; border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-        .info-left { font-size: 13px; color: #64748b; font-weight: 600; }
-        .info-number { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 2px; }
-        .change-btn { background: #f1f5f9; color: #7c3aed; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid #cbd5e1; }
+        .info-card { background: #ffffff; border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .info-left { font-size: 13px; color: #64748b; font-weight: 700; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        .circle-tag { display: inline-block; background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+        .info-number { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+        .change-btn { background: #f1f5f9; color: #7c3aed; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid #cbd5e1; flex-shrink: 0; }
 
         .wallet-bar { background: #0f172a; color: #fff; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
         .wallet-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; color: #4ade80; }
@@ -83,6 +84,8 @@
 </head>
 <body id="planPageMeta"
       data-operator="{{ (operator or '') | trim | lower }}"
+      data-circle="{{ (circle or '') | trim }}"
+      data-number="{{ (mobile_number or '') | trim }}"
       data-cb-rate="{{ cashback_rate or 0 }}">
 
 <div class="top-bar">
@@ -98,8 +101,13 @@
 
     <div class="info-card">
         <div>
-            <div class="info-left">{{ operator }}{% if circle %} • {{ circle }}{% endif %}</div>
-            <div class="info-number">{{ mobile_number }}</div>
+            <div class="info-left">
+                <span id="displayOperatorText">{{ operator or 'Jio' }}</span>
+                <span class="circle-tag" id="displayCircleTag" {% if not circle %}style="display: none;"{% endif %}>
+                    📍 <span id="displayCircleText">{{ circle }}</span>
+                </span>
+            </div>
+            <div class="info-number" id="displayNumberText">{{ mobile_number }}</div>
         </div>
         <a href="/recharge" class="change-btn">Change</a>
     </div>
@@ -141,8 +149,8 @@
                 </div>
                 <form action="/recharge/initiate" method="POST" onsubmit="return prepareRecharge(this)">
                     <input type="hidden" name="service_type" value="Mobile Prepaid">
-                    <input type="hidden" name="number" value="{{ mobile_number }}">
-                    <input type="hidden" name="operator" value="{{ operator }}">
+                    <input type="hidden" name="number" class="plan-number-input" value="{{ mobile_number }}">
+                    <input type="hidden" name="operator" class="plan-operator-input" value="{{ operator }}">
                     <input type="hidden" name="amount" class="plan-amount-input" value="">
                     <input type="hidden" name="use_wallet" class="plan-wallet-input" value="on">
                     <button type="submit" class="plan-book-btn">Recharge</button>
@@ -159,9 +167,15 @@
 </div>
 
 <script>
+    const STORAGE_KEY_NUMBER = "cc_saved_mobile_number";
+    const STORAGE_KEY_OPERATOR = "cc_saved_operator";
+    const STORAGE_KEY_CIRCLE = "cc_saved_circle";
+
     let currentCategory = '5g';
     const metaEl = document.getElementById('planPageMeta');
-    const currentOperator = (metaEl ? metaEl.getAttribute('data-operator') : '') || '';
+    let currentOperator = (metaEl ? metaEl.getAttribute('data-operator') : '') || '';
+    let currentCircle = (metaEl ? metaEl.getAttribute('data-circle') : '') || '';
+    let currentNumber = (metaEl ? metaEl.getAttribute('data-number') : '') || '';
     const cashbackRate = parseFloat(metaEl ? metaEl.getAttribute('data-cb-rate') : '0') || 0;
     const NON_MOBILE_OPERATORS = ['dth', 'electricity', 'gas', 'fastag'];
 
@@ -175,6 +189,76 @@
         { keys: ['sony', 'sonyliv'], name: 'SonyLIV', domain: 'sonyliv.com' },
         { keys: ['zee5', 'zee 5'], name: 'ZEE5', domain: 'zee5.com' }
     ];
+
+    function updateCircleBadge(circleName) {
+        const tag = document.getElementById('displayCircleTag');
+        const txt = document.getElementById('displayCircleText');
+        const clean = (circleName || '').trim();
+        if (clean) {
+            if (txt) txt.textContent = clean;
+            if (tag) tag.style.display = 'inline-block';
+        } else {
+            if (tag) tag.style.display = 'none';
+        }
+    }
+
+    function persistCurrentSelection() {
+        try {
+            const cleanNum = (currentNumber || '').replace(/\D/g, '').slice(0, 10);
+            if (cleanNum.length === 10) {
+                localStorage.setItem(STORAGE_KEY_NUMBER, cleanNum);
+            }
+            if (currentOperator) {
+                const opDisplay = currentOperator.charAt(0).toUpperCase() + currentOperator.slice(1);
+                localStorage.setItem(STORAGE_KEY_OPERATOR, opDisplay);
+            }
+            if (currentCircle) {
+                localStorage.setItem(STORAGE_KEY_CIRCLE, currentCircle);
+            }
+        } catch (e) {
+            console.warn("localStorage persist error:", e);
+        }
+    }
+
+    async function hydrateNumberAndCircle() {
+        try {
+            const savedNum = (localStorage.getItem(STORAGE_KEY_NUMBER) || "").replace(/\D/g, "").slice(0, 10);
+            const savedOp = (localStorage.getItem(STORAGE_KEY_OPERATOR) || "").trim();
+            const savedCircle = (localStorage.getItem(STORAGE_KEY_CIRCLE) || "").trim();
+
+            if (!currentNumber && savedNum.length === 10) {
+                currentNumber = savedNum;
+                const numEl = document.getElementById('displayNumberText');
+                if (numEl) numEl.textContent = currentNumber;
+                document.querySelectorAll('.plan-number-input').forEach(inp => inp.value = currentNumber);
+            }
+
+            if (!currentCircle && savedCircle) {
+                currentCircle = savedCircle;
+                updateCircleBadge(currentCircle);
+            }
+
+            if (!currentOperator && savedOp) {
+                currentOperator = savedOp.toLowerCase();
+                const opEl = document.getElementById('displayOperatorText');
+                if (opEl) opEl.textContent = savedOp;
+                document.querySelectorAll('.plan-operator-input').forEach(inp => inp.value = savedOp);
+            }
+
+            if (currentNumber && currentNumber.length >= 4 && !currentCircle) {
+                const res = await fetch(`/recharge/detect-operator?number=${encodeURIComponent(currentNumber)}`);
+                const data = await res.json();
+                if (data && data.found && data.circle) {
+                    currentCircle = data.circle;
+                    updateCircleBadge(currentCircle);
+                }
+            }
+
+            persistCurrentSelection();
+        } catch (err) {
+            console.error("Hydrate error:", err);
+        }
+    }
 
     function syncWalletInputs() {
         const cb = document.getElementById('globalUseWallet');
@@ -351,6 +435,7 @@
             if (catGrid) catGrid.style.display = 'none';
             currentCategory = '';
         }
+        hydrateNumberAndCircle();
         syncWalletInputs();
         renderPlanOttIcons();
         filterAndDisplay();
@@ -389,6 +474,7 @@
     }
 
     function prepareRecharge(form) {
+        persistCurrentSelection();
         syncWalletInputs();
         const card = form.closest('.plan-card');
         const rawText = card ? (card.getAttribute('data-raw') || '') : '';
