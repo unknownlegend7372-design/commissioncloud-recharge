@@ -42,6 +42,8 @@
         input, select { width: 100%; padding: 14px; border: 1.5px solid #cbd5e1; border-radius: 12px; font-size: 15px; outline: none; background: #f8fafc; color: #0f172a; transition: 0.2s; }
         input:focus, select:focus { border-color: #7c3aed; background: #fff; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
 
+        .circle-badge { margin-top: 8px; padding: 6px 10px; border-radius: 8px; background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; font-size: 12px; font-weight: 700; display: inline-block; }
+
         .op-logo-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
         .op-logo-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1.5px solid #cbd5e1; border-radius: 10px; background: #ffffff; cursor: pointer; font-size: 12px; font-weight: 700; color: #0f172a; transition: 0.15s; }
         .op-logo-chip:hover { border-color: #7c3aed; background: #faf5ff; }
@@ -126,10 +128,14 @@
     <div class="form-card" id="mainFormCard">
         <form id="rechargeForm" onsubmit="handleFormSubmit(event)">
             <input type="hidden" name="service_type" id="serviceTypeInput" value="{{ selected_service or 'Mobile Prepaid' }}">
+            <input type="hidden" name="circle" id="circleInput" value="">
 
             <div class="form-group">
                 <label id="numberLabel">Mobile Number</label>
                 <input type="text" inputmode="numeric" name="number" id="numberInput" placeholder="Enter 10-digit mobile number" maxlength="10" oninput="onNumberInput(this.value)" required>
+                <div class="circle-badge" id="circleBadge" style="display: none;">
+                    📍 Circle: <span id="circleText">-</span>
+                </div>
             </div>
 
             <div class="form-group" id="operatorGroup">
@@ -201,12 +207,48 @@
 </footer>
 
 <script>
+    const STORAGE_KEY_NUMBER = "cc_saved_mobile_number";
+    const STORAGE_KEY_OPERATOR = "cc_saved_operator";
+    const STORAGE_KEY_CIRCLE = "cc_saved_circle";
+
     let isOperatorLocked = false;
+    let lastSeriesRequestId = 0;
 
     function handleOpLogoError(img) {
         img.style.display = 'none';
         const fallback = img.nextElementSibling;
         if (fallback) fallback.style.display = 'flex';
+    }
+
+    function setCircleDisplay(circleName) {
+        const badge = document.getElementById('circleBadge');
+        const textEl = document.getElementById('circleText');
+        const hiddenEl = document.getElementById('circleInput');
+        const cleanCircle = (circleName || '').trim();
+        if (hiddenEl) hiddenEl.value = cleanCircle;
+        if (cleanCircle) {
+            if (textEl) textEl.textContent = cleanCircle;
+            if (badge) badge.style.display = 'inline-block';
+        } else {
+            if (textEl) textEl.textContent = '-';
+            if (badge) badge.style.display = 'none';
+        }
+    }
+
+    function saveNumberAndOperator(number, operator, circle) {
+        try {
+            if (number) {
+                localStorage.setItem(STORAGE_KEY_NUMBER, number);
+            }
+            if (operator) {
+                localStorage.setItem(STORAGE_KEY_OPERATOR, operator);
+            }
+            if (circle) {
+                localStorage.setItem(STORAGE_KEY_CIRCLE, circle);
+            }
+        } catch (e) {
+            console.warn("localStorage save failed:", e);
+        }
     }
 
     function toggleBsnlBox(opValue) {
@@ -231,6 +273,9 @@
         selectBox.value = bsnlOp;
         isOperatorLocked = true;
         highlightOperatorChip('BSNL');
+        const numVal = (document.getElementById('numberInput')?.value || '').trim();
+        const circVal = (document.getElementById('circleInput')?.value || '').trim();
+        saveNumberAndOperator(numVal, bsnlOp, circVal);
     }
 
     function highlightOperatorChip(opValue) {
@@ -245,7 +290,7 @@
 
     function setOperatorValue(opName, lockSelection = true) {
         const selectBox = document.getElementById('operatorSelect');
-        if (!selectBox) return;
+        if (!selectBox || !opName) return;
         const targetOp = opName.toLowerCase() === 'bsnl' ? 'BSNL Combo' : opName;
         const matchedOpt = Array.from(selectBox.options).find(
             opt => opt.value.toLowerCase() === targetOp.toLowerCase() || opt.text.toLowerCase() === targetOp.toLowerCase()
@@ -257,11 +302,17 @@
 
     function selectOperatorFromStrip(opName) {
         setOperatorValue(opName, true);
+        const numVal = (document.getElementById('numberInput')?.value || '').trim();
+        const circVal = (document.getElementById('circleInput')?.value || '').trim();
+        saveNumberAndOperator(numVal, document.getElementById('operatorSelect').value, circVal);
     }
 
     document.getElementById('operatorSelect').addEventListener('change', function() {
         if (this.value !== "") isOperatorLocked = true;
         highlightOperatorChip(this.value);
+        const numVal = (document.getElementById('numberInput')?.value || '').trim();
+        const circVal = (document.getElementById('circleInput')?.value || '').trim();
+        saveNumberAndOperator(numVal, this.value, circVal);
     });
 
     function selectService(serviceName, element) {
@@ -310,22 +361,59 @@
         const inputEl = document.getElementById('numberInput');
         const cleaned = (val || '').replace(/\D/g, '').slice(0, 10);
         if (inputEl && inputEl.value !== cleaned) inputEl.value = cleaned;
-        if (!isOperatorLocked && cleaned.length >= 2) autoDetectOperator(cleaned);
+
+        if (cleaned.length < 4) {
+            setCircleDisplay('');
+        }
+
+        if (cleaned.length === 10) {
+            const currentOp = (document.getElementById('operatorSelect')?.value || 'Jio') || 'Jio';
+            const currentCircle = (document.getElementById('circleInput')?.value || '').trim();
+            saveNumberAndOperator(cleaned, currentOp, currentCircle);
+        }
+
+        if (cleaned.length >= 2) {
+            autoDetectOperator(cleaned);
+        }
     }
 
-    function autoDetectOperator(number) {
+    async function autoDetectOperator(number) {
         const firstTwo = number.substring(0, 2);
         const selectBox = document.getElementById('operatorSelect');
-        let detectedOp = "";
+        let fallbackOp = "";
 
-        if (['94', '93'].includes(firstTwo)) detectedOp = "BSNL Combo";
-        else if (['62', '70', '72', '75', '81', '82', '83', '84', '87', '88', '89'].includes(firstTwo)) detectedOp = "Jio";
-        else if (['98', '99', '97', '96', '95', '91', '90', '76', '77', '78', '79'].includes(firstTwo)) detectedOp = "Airtel";
-        else if (['86', '85', '73', '74'].includes(firstTwo)) detectedOp = "Vi";
+        if (['94', '93'].includes(firstTwo)) fallbackOp = "BSNL Combo";
+        else if (['62', '70', '72', '75', '81', '82', '83', '84', '87', '88', '89'].includes(firstTwo)) fallbackOp = "Jio";
+        else if (['98', '99', '97', '96', '95', '91', '90', '76', '77', '78', '79'].includes(firstTwo)) fallbackOp = "Airtel";
+        else if (['86', '85', '73', '74'].includes(firstTwo)) fallbackOp = "Vi";
 
-        if (detectedOp && !isOperatorLocked) {
-            selectBox.value = detectedOp;
-            highlightOperatorChip(detectedOp);
+        if (fallbackOp && !isOperatorLocked) {
+            selectBox.value = fallbackOp;
+            highlightOperatorChip(fallbackOp);
+        }
+
+        if (number.length < 4) return;
+
+        const reqId = ++lastSeriesRequestId;
+        try {
+            const res = await fetch(`/recharge/detect-operator?number=${encodeURIComponent(number)}`);
+            const data = await res.json();
+            if (reqId !== lastSeriesRequestId) return;
+
+            if (data && data.found) {
+                if (data.circle) {
+                    setCircleDisplay(data.circle);
+                }
+                if (data.operator && !isOperatorLocked) {
+                    setOperatorValue(data.operator, false);
+                }
+                if (number.length === 10) {
+                    const finalOp = (document.getElementById('operatorSelect')?.value || data.operator || 'Jio');
+                    saveNumberAndOperator(number, finalOp, data.circle || '');
+                }
+            }
+        } catch (err) {
+            console.error("Series detect error:", err);
         }
     }
 
@@ -333,6 +421,7 @@
         event.preventDefault();
         const number = document.getElementById('numberInput').value.trim();
         const operator = document.getElementById('operatorSelect').value.trim();
+        const circle = document.getElementById('circleInput').value.trim();
 
         if (!/^[6-9][0-9]{9}$/.test(number)) {
             alert("कृपया 6–9 से शुरू होने वाला सही 10 अंकों का मोबाइल नंबर दर्ज करें।");
@@ -344,12 +433,37 @@
             document.getElementById('operatorSelect').focus();
             return;
         }
-        goToPlanPage(number, operator);
+
+        saveNumberAndOperator(number, operator, circle);
+        goToPlanPage(number, operator, circle);
     }
 
-    function goToPlanPage(number, operator) {
-        window.location.href = `/recharge/plans?number=${encodeURIComponent(number)}&operator=${encodeURIComponent(operator)}`;
+    function goToPlanPage(number, operator, circle = '') {
+        const params = new URLSearchParams({
+            number: number,
+            operator: operator,
+        });
+        if (circle) params.set("circle", circle);
+        window.location.href = `/recharge/plans?${params.toString()}`;
     }
+
+    window.addEventListener("DOMContentLoaded", function () {
+        try {
+            const savedNum = (localStorage.getItem(STORAGE_KEY_NUMBER) || "").replace(/\D/g, "").slice(0, 10);
+            const savedOp = (localStorage.getItem(STORAGE_KEY_OPERATOR) || "Jio").trim();
+            const savedCircle = (localStorage.getItem(STORAGE_KEY_CIRCLE) || "").trim();
+
+            if (savedNum.length === 10) {
+                const inputEl = document.getElementById('numberInput');
+                if (inputEl) inputEl.value = savedNum;
+                if (savedOp) setOperatorValue(savedOp, true);
+                if (savedCircle) setCircleDisplay(savedCircle);
+                autoDetectOperator(savedNum);
+            }
+        } catch (e) {
+            console.warn("localStorage restore failed:", e);
+        }
+    });
 </script>
 
 </body>
